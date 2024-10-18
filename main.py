@@ -38,4 +38,7 @@ if __name__ == "__main__":
         mostrar_imagenes(imagen_original, imagen_procesada)
 
         # Guardar la imagen procesada
-        cv2.imwrite('resultados/resultado_ecualizacion.png', imagen_procesada)
+        resultado_guardado = f'resultados/resultado_ecualizacion_window_{window_size}.png'
+        cv2.imwrite(resultado_guardado, imagen_procesada)
+
+
