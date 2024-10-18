@@ -25,15 +25,17 @@ def mostrar_imagenes(original, procesada):
 if __name__ == "__main__":
 
     ruta_imagen = 'files/imagen_con_detalles_escondidos.tif'
-    window_size = 15
+    window_sizes = [7, 14, 28, 52]
 
-    imagen_procesada = local_histogram_equalization(ruta_imagen, window_size)
+    for window_size in window_sizes:
 
-    # Cargar la imagen original para mostrarla
-    imagen_original = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
+        imagen_procesada = local_histogram_equalization(ruta_imagen, window_size)
 
-    # Mostrar las imágenes
-    mostrar_imagenes(imagen_original, imagen_procesada)
+        # Cargar la imagen original para mostrarla
+        imagen_original = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
 
-    # Guardar la imagen procesada
-    cv2.imwrite('resultados/resultado_ecualizacion.png', imagen_procesada)
+        # Mostrar las imágenes
+        mostrar_imagenes(imagen_original, imagen_procesada)
+
+        # Guardar la imagen procesada
+        cv2.imwrite('resultados/resultado_ecualizacion.png', imagen_procesada)
