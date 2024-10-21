@@ -46,15 +46,3 @@ python nombre_del_script.py
 - `validar_nombre(indices_letras)`: Valida la línea del nombre del alumno.
 - `combinar_imagenes(imgs, nombres, aprobados)`: Combina las imágenes de resultados en una sola imagen.
 
-## Notas
-
-- Asegúrate de que las imágenes de entrada están correctamente alineadas y son de buena calidad para obtener los mejores resultados.
-- Puedes ajustar los parámetros de umbralización y recorte según sea necesario para adaptarse a diferentes formatos de examen.
-
-## Contribuciones
-
-Si deseas contribuir a este proyecto, no dudes en hacer un fork del repositorio y enviar un pull request.
-
-## Licencia
-
-Este proyecto está bajo la Licencia MIT.
