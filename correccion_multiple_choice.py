@@ -2,9 +2,6 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-
-# Función para cargar y mostrar la imagen original
 def cargar_y_mostrar_imagen(ruta_imagen):
     img = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
     return img
@@ -162,42 +159,39 @@ def validar_fecha(indices_letras):
         return "OK"
     return "MAL"
 
+
+def hay_linea_vertical(contorno, altura_imagen, umbral_proporcion=0.7):
+    # Encontrar el bounding box del contorno
+    x, y, w, h = cv2.boundingRect(contorno)
+    
+    # Verificar si la altura del contorno es al menos el umbral de la altura total de la imagen
+    if h / altura_imagen >= umbral_proporcion:
+        return True
+    return False
+
 def identificador_letra(letra_recortada):
+    # Invertir la imagen (letras en blanco sobre fondo negro)
+    umbral = umbralizar_imagen(letra_recortada)
+    imagen_bin = cv2.bitwise_not(umbral)
+
+    # Encontrar contornos internos
+    contornos_internos, _ = cv2.findContours(imagen_bin, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     
-    img_expand = cv2.copyMakeBorder(letra_recortada, 5, 5, 5, 5, cv2.BORDER_CONSTANT, value=255) # agregamos bordes
-    
+    altura_imagen = letra_recortada.shape[0]
 
-    img_inv = img_expand==0 # invertimos para que quede fondo negro
+    if len(contornos_internos) == 1:
+        return 'C'
+    elif len(contornos_internos) == 2:
+        # Comprobar si uno de los contornos es una línea vertical
+        if hay_linea_vertical(contornos_internos[1], altura_imagen):
+            return 'D'
+        else:
+            return 'A'
+    elif len(contornos_internos) == 3:
+        return 'B'
+    else:
+        return "Respuesta inválida"
 
-    inv_uint8 = img_inv.astype(np.uint8) # conversión para que no quede bool
-
-    contours,_ = cv2.findContours(inv_uint8, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) # buscamos contornos
-
-    if len(contours) == 1:
-        return "C" 
-    elif len(contours) == 3:
-        return "B"
-    elif len(contours) == 2:
-
-        kernel = np.array([[-1, -1, -1], [2, 2, 2], [-1, -1, -1]])              # definimos un filtro horizontal para detectar líneas
-
-        filtro_aplicado = cv2.filter2D(letra_recortada, cv2.CV_64F, kernel)     # Aplicar el filtro a la imagen de la letra
-
-        magnitud_filtro = np.abs(filtro_aplicado)                               # Obtener la magnitud del filtro
-
- 
-        umbral = magnitud_filtro.max() * 0.8                                    # Umbralizar la imagen filtrada para obtener una imagen binaria
-        imagen_binaria = magnitud_filtro >= umbral
-
-        
-        lineas_horizontales = np.any(imagen_binaria, axis=1)                    # Contar las filas con al menos un valor True
-        cantidad_lineas = np.sum(lineas_horizontales)
-
-        if cantidad_lineas == 1:
-            return "A"
-
-        else: 
-            return "D"
 
 # Función para validar las preguntas
 def validar_pregunta(indices_letras, recorte_respuesta):
@@ -340,13 +334,15 @@ for i, ruta_imagen in enumerate(rutas_imagenes):
     # Validar la respuesta
         validacion_pregunta = validar_pregunta(indices_letras_respuesta, respuesta_recortada)
         
-        print(f"Pregunta {k + 1}: {validacion_pregunta}")
-        if validacion_pregunta[0] == "OK":
-            respuestas_correctas += 1
+        if validacion_pregunta[0] == "OK":            
             letra = validacion_pregunta[1]
             if letra == respuestas_correjidas[k + 1]:
-                pass
-            
+                print(f"Pregunta {k + 1}: Bien")
+                respuestas_correctas += 1
+            elif letra != validacion_pregunta[1]:
+                print(f"Pregunta {k + 1}: Mal")
+        else:
+            print(f"Pregunta {k + 1}: {validacion_pregunta}")
         
     # 9. Evaluar si el alumno aprobó o no
     aprobado = respuestas_correctas >= 6
