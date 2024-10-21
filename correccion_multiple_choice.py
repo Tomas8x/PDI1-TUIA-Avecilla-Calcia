@@ -162,14 +162,64 @@ def validar_fecha(indices_letras):
         return "OK"
     return "MAL"
 
+def identificador_letra(letra_recortada):
+    
+    img_expand = cv2.copyMakeBorder(letra_recortada, 5, 5, 5, 5, cv2.BORDER_CONSTANT, value=255) # agregamos bordes
+    
+
+    img_inv = img_expand==0 # invertimos para que quede fondo negro
+
+    inv_uint8 = img_inv.astype(np.uint8) # conversión para que no quede bool
+
+    contours,_ = cv2.findContours(inv_uint8, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) # buscamos contornos
+
+    if len(contours) == 1:
+        return "C" 
+    elif len(contours) == 3:
+        return "B"
+    elif len(contours) == 2:
+
+        kernel = np.array([[-1, -1, -1], [2, 2, 2], [-1, -1, -1]])              # definimos un filtro horizontal para detectar líneas
+
+        filtro_aplicado = cv2.filter2D(letra_recortada, cv2.CV_64F, kernel)     # Aplicar el filtro a la imagen de la letra
+
+        magnitud_filtro = np.abs(filtro_aplicado)                               # Obtener la magnitud del filtro
+
+ 
+        umbral = magnitud_filtro.max() * 0.8                                    # Umbralizar la imagen filtrada para obtener una imagen binaria
+        imagen_binaria = magnitud_filtro >= umbral
+
+        
+        lineas_horizontales = np.any(imagen_binaria, axis=1)                    # Contar las filas con al menos un valor True
+        cantidad_lineas = np.sum(lineas_horizontales)
+
+        if cantidad_lineas == 1:
+            return "A"
+
+        else: 
+            return "D"
+
 # Función para validar las preguntas
-def validar_pregunta(indices_letras):
+def validar_pregunta(indices_letras, recorte_respuesta):
     if len(indices_letras) == 0:
         return "Incorrecto - No hay índices"
     elif len(indices_letras) > 2:
         return "Incorrecto - Más de 2 índices"
     else:
-        return "Correcto"
+        # Conectar componentes
+        connectivity = 8  # Conexión de 8 vecinos
+        num_labels, _, stats, _ = cv2.connectedComponentsWithStats(recorte_respuesta, connectivity, cv2.CV_32S)
+
+        # Obtener el rectángulo delimitador de la única letra
+        x, y, w, h = stats[0][:4]  # stats[1] porque stats[0] es el fondo
+
+        # Recortar la imagen de la letra desde la imagen binaria original
+        letra_recortada = recorte_respuesta[y:y+h, x:x+w]  # Aquí se realiza el recorte correcto
+        
+        letra = identificador_letra(letra_recortada)
+        
+
+        return "OK", letra
 
 # Función para combinar todas las imágenes en una sola de forma vertical
 def combinar_imagenes(imgs, nombres, aprobados, ancho=300, alto=100):
@@ -263,21 +313,41 @@ for i, ruta_imagen in enumerate(rutas_imagenes):
     # 8. Procesar preguntas
     preguntas_recortadas = recortar_preguntas(img_umbralizada, contornos)
 
+    """
+    Las imagenes se recortan en el siguiente orden (6 - 2 - 4 - 3 - 1 - 10 - 9 - 8 - 7 - 5)
+    Al saber las respuesta a cada una de antemano decidimos ordenarlas en una lista con respecto a como las recorta el script
+    """
+    respuestas_correjidas = {1: "B",
+                             2: "B",
+                             3: "D",
+                             4: "A",
+                             5: "C",
+                             6: "D",
+                             7: "D",
+                             8: "B",
+                             9: "A",
+                             10: "B"}
+
     # Validar preguntas
     for k, pregunta_recortada in enumerate(preguntas_recortadas):
+        
         # Recortar la respuesta desde la línea horizontal hacia arriba
         respuesta_recortada = recortar_respuesta_desde_linea(pregunta_recortada, margen_bajo=0, margen_arriba=13, margen_derecho=10)
 
         # Obtener los índices de letras en la respuesta recortada
         indices_letras_respuesta = obtener_indices(respuesta_recortada)
+        
     # Validar la respuesta
-        validacion_pregunta = validar_pregunta(indices_letras_respuesta)
+        validacion_pregunta = validar_pregunta(indices_letras_respuesta, respuesta_recortada)
+        
         print(f"Pregunta {k + 1}: {validacion_pregunta}")
-        # Validar la respuesta
-        validacion_pregunta = validar_pregunta(indices_letras_respuesta)
-        if validacion_pregunta == "Correcto":
+        if validacion_pregunta[0] == "OK":
             respuestas_correctas += 1
-
+            letra = validacion_pregunta[1]
+            if letra == respuestas_correjidas[k + 1]:
+                pass
+            
+        
     # 9. Evaluar si el alumno aprobó o no
     aprobado = respuestas_correctas >= 6
     aprobados_examen.append(aprobado)
@@ -292,4 +362,4 @@ plt.axis('off')
 plt.show()
 
 # Guardar la imagen en un archivo:
-#cv2.imwrite('resultado_examenes.png', imagen_salida)
+cv2.imwrite('resultado_examenes.png', imagen_salida)
