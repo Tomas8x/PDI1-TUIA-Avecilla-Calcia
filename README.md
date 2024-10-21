@@ -31,18 +31,3 @@ pip install opencv-python numpy matplotlib
 1. **Modificar Rutas**: Asegúrate de que las rutas de las imágenes en la lista `rutas_imagenes` son correctas y accesibles.
 2. **Ejecutar el Script**: Ejecuta el script en un entorno Python. Esto procesará las imágenes y generará una salida visual con los resultados.
 
-```bash
-python nombre_del_script.py
-```
-
-3. **Visualizar Resultados**: La imagen final se mostrará utilizando Matplotlib. También puedes descomentar la línea para guardar la imagen generada.
-
-## Funciones Principales
-
-- `cargar_y_mostrar_imagen(ruta_imagen)`: Carga y devuelve una imagen en escala de grises.
-- `umbralizar_imagen(img, thresh=128, maxval=255)`: Umbraliza la imagen para binarizarla.
-- `obtener_contornos(img_umbralizada)`: Obtiene y ordena los contornos de la imagen.
-- `recortar_preguntas(img_umbralizada, contornos_ordenados)`: Recorta las preguntas de la imagen utilizando los contornos detectados.
-- `validar_nombre(indices_letras)`: Valida la línea del nombre del alumno.
-- `combinar_imagenes(imgs, nombres, aprobados)`: Combina las imágenes de resultados en una sola imagen.
-
