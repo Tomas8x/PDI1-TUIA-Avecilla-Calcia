@@ -7,7 +7,7 @@ Este script en Python utiliza OpenCV y NumPy para procesar imágenes de exámene
 
 ## Requisitos
 
-- Python 3.x
+- Python
 - OpenCV
 - NumPy
 - Matplotlib
