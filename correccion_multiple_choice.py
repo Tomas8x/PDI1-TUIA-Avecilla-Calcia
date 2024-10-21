@@ -3,176 +3,88 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+
 # Función para cargar y mostrar la imagen original
 def cargar_y_mostrar_imagen(ruta_imagen):
     img = cv2.imread(ruta_imagen, cv2.IMREAD_GRAYSCALE)
     return img
 
+# Función para umbralizar la imagen
 def umbralizar_imagen(img, thresh=128, maxval=255):
-    if len(img.shape) == 3:  # Si la imagen está en color, conviértela a escala de grises
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    _, img_umbralizada = cv2.threshold(img, thresh=thresh, maxval=maxval, type=cv2.THRESH_BINARY)
-    return img, img_umbralizada
+    _, img_umbralizada = cv2.threshold(img, thresh=thresh, maxval=maxval, type=cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    return img_umbralizada
 
-# Función para obtener y dibujar contornos en la imagen
-def obtener_y_dibujar_contornos(img_umbralizada, grosor=1):
-
-    contornos,_ = cv2.findContours(img_umbralizada, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+# Función para obtener contornos
+def obtener_contornos(img_umbralizada):
+    contornos, _ = cv2.findContours(img_umbralizada, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     contornos_ordenados = sorted(contornos, key=cv2.contourArea, reverse=True)
-    
     return contornos_ordenados
-# Función para recortar la región de una pregunta dada su índice
-def recortar_pregunta_por_indice(index_pregunta, contornos_ordenados, img_umbralizada, dicc_indices):
+
+# Función para obtener las preguntas
+def obtener_preguntas(img_umbralizada, contornos_ordenados, n=2):
+    preguntas = []
+    for i in range(n):
+        x, y, w, h = cv2.boundingRect(contornos_ordenados[i])
+        pregunta = img_umbralizada[y:y+h, x:x+w]
+        preguntas.append(pregunta)
+    return preguntas
+
+# Función para recortar preguntas de cada columna
+def recortar_preguntas(img_umbralizada, contornos_ordenados):
+    preguntas = []
+    for contorno in contornos_ordenados:
+        x, y, w, h = cv2.boundingRect(contorno)
+        if h > 50 and h < 500:  
+            pregunta = img_umbralizada[y:y+h, x:x+w]
+            preguntas.append(pregunta)
+    return preguntas
+
+# Función para recortar las líneas de las preguntas
+def recortar_lineas_preguntas(preguntas):
+    lineas_recortadas_preguntas = []
     
-    contorno_pregunta = contornos_ordenados[dicc_indices[index_pregunta]]
-    x, y, w, h = cv2.boundingRect(contorno_pregunta)
-    pregunta = img_umbralizada[y:y+h, x:x+w]  # Recortar la región de interés
+    for pregunta in preguntas:
+        pregunta_bin = umbralizar_imagen(pregunta)
+        contornos_lineas = obtener_contornos(pregunta_bin)
 
-    return pregunta
+        longitud_minima = 30 
+        longitud_maxima = pregunta.shape[1]  # Considera el ancho de la pregunta como la longitud máxima
 
-# Función para detectar la línea horizontal y recortar la región de respuesta
-def detectar_linea_y_recortar_respuesta(pregunta):
-    
-    contornos, _ = cv2.findContours(pregunta, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-    
-    contornos_ordenados = sorted(contornos, key=cv2.contourArea, reverse=True)
-    
-    contorno_linea = contornos_ordenados[1]  # El segundo contorno es la línea horizontal
-    x, y, w, h = cv2.boundingRect(contorno_linea)
-    
-    respuesta = pregunta[0:y, x:x+w]  # Recortamos desde la línea hacia arriba
-
-    respuesta =  respuesta[::-1,] # Rotacion 180º
-
-    img_zeros = respuesta==0
-
-    img_row_zeros = img_zeros.any(axis=1)
-
-    img_row_zeros_idxs = np.argwhere(np.logical_not(respuesta.all(axis=1))) # Tengo los indices de los renglones
-
-    if img_row_zeros_idxs.size == 0:  # Condición si es vacío no hay respuesta
-        return None
-    
-    if img_row_zeros_idxs[0] > 10: # respuesta vacía con texto arriba
-        return None
-
-    start_end = np.diff(img_row_zeros) # inicio y final de los textos
-
-    renglones_indxs = np.argwhere(start_end) # indices de los mismos
-
-    start_idx = (renglones_indxs[0]).item()
-
-    end_idx = (renglones_indxs[1]).item()
-
-    respuesta = respuesta[start_idx:end_idx+1, :] # cortamos el sector respuesta
-
-    respuesta =  respuesta[::-1,] # volvemos a rotarla
-    
-    return respuesta
-
-def detectar_letra(recorte_respuesta):
-    # Conectar componentes
-    connectivity = 8  # Conexión de 8 vecinos
-    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(recorte_respuesta, connectivity, cv2.CV_32S)
-
-    # Revisar si hay más de una componente conectada (excluyendo el fondo)
-    if num_labels <= 1:  # Solo hay fondo
-        return None # No se detectó ninguna letra
-
-    # Si hay más de una componente conectada, indicaría más de una letra o ruido
-    if num_labels > 2:  # Excluyendo el fondo
-        return None  # Hay más de una letra o ruido
-
-    # Obtener el rectángulo delimitador de la única letra
-    x, y, w, h = stats[0][:4]  # stats[1] porque stats[0] es el fondo
-
-    # Recortar la imagen de la letra desde la imagen binaria original
-    letra_recortada = recorte_respuesta[y:y+h, x:x+w]  # Aquí se realiza el recorte correcto
-
-    return letra_recortada  # Devolvemos la letra recortada
-
-
-def identificador_letra(letra_recortada):
-    
-    img_expand = cv2.copyMakeBorder(letra_recortada, 5, 5, 5, 5, cv2.BORDER_CONSTANT, value=255) # agregamos bordes
-
-    img_inv = img_expand==0 # invertimos para que quede fondo negro
-
-    inv_uint8 = img_inv.astype(np.uint8) # conversión para que no quede bool
-
-    contours,_ = cv2.findContours (inv_uint8, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE) # buscamos contornos
-
-    if len(contours) == 1:
-        return "C"
-        
-    if len(contours) == 3:
-        return "B"
-
-    if len(contours) == 2:
-
-        kernel = np.array([[-1, -1, -1], [2, 2, 2], [-1, -1, -1]])              # definimos un filtro horizontal para detectar líneas
-
-        filtro_aplicado = cv2.filter2D(letra_recortada, cv2.CV_64F, kernel)     # Aplicar el filtro a la imagen de la letra
-
-        magnitud_filtro = np.abs(filtro_aplicado)                               # Obtener la magnitud del filtro
-
- 
-        umbral = magnitud_filtro.max() * 0.8                                    # Umbralizar la imagen filtrada para obtener una imagen binaria
-        imagen_binaria = magnitud_filtro >= umbral
-
-        
-        lineas_horizontales = np.any(imagen_binaria, axis=1)                    # Contar las filas con al menos un valor True
-        cantidad_lineas = np.sum(lineas_horizontales)
-
-        if cantidad_lineas == 1:
-            return "A"
-
-        else: 
-            return "D"
-        
-def correccion_examen(examen, verbose=True):
-    # Diccionario para mapear las preguntas con los índices de contornos
-    dicc_indices = {1: 6, 2: 5, 3: 4, 4: 3, 5: 12, 6: 7, 7: 11, 8: 8, 9: 9, 10: 10}
-
-    img, img_umbralizada = umbralizar_imagen(examen)
-
-    contornos_ordenados = obtener_y_dibujar_contornos(img_umbralizada, grosor=1)
-
-    respuestas_correctas = {1: "C", 2: "B", 3: "A", 4: "D", 5: "B", 6: "B", 7: "A", 8: "B", 9: "D", 10: "D"}
-
-    cantidad_correctas = 0
-
-    for i in range(1, 11):  # Iteramos por todas las preguntas
-        
-        pregunta = recortar_pregunta_por_indice(i, contornos_ordenados, img_umbralizada, dicc_indices)
-        
-        box_respuesta = detectar_linea_y_recortar_respuesta(pregunta)
-
-        if box_respuesta is None:
-            if verbose:
-                print(f'Pregunta {i}: MAL')
-            continue
-        
-        respuesta = detectar_letra(box_respuesta)
-
-        if respuesta is None:
-            if verbose:
-                print(f'Pregunta {i}: MAL')
-            continue
-
-        letra_identificada = identificador_letra(respuesta)
-
-        if letra_identificada == respuestas_correctas[i]:
-            if verbose:
-                print(f'Pregunta {i}: OK')
-            cantidad_correctas += 1
-        else:
-            if verbose:
-                print(f'Pregunta {i}: MAL')
+        lineas_pregunta = []
+        for contorno in contornos_lineas:
+            x, y, w, h = cv2.boundingRect(contorno)
+            longitud = w
             
-    return cantidad_correctas
+            if longitud_minima < longitud < longitud_maxima:
+                recorte = pregunta[y:y+h, x:x+w]
+                lineas_pregunta.append((recorte, y, x, w, h))
+        
+        lineas_recortadas_preguntas.append(lineas_pregunta)
+    
+    return lineas_recortadas_preguntas
 
+def recortar_respuesta_desde_linea(pregunta, margen_bajo=5, margen_arriba=0, margen_derecho=0):
+    # Umbralizamos la imagen de la pregunta para facilitar la detección de la línea
+    pregunta_bin = umbralizar_imagen(pregunta)
+    contornos_lineas = obtener_contornos(pregunta_bin)
+
+    # Límites de altura para detectar una línea horizontal
+    altura_minima_linea = 1  # Altura mínima para una línea delgada
+    altura_maxima_linea = 10  # Altura máxima para evitar bloques grandes
+
+    for contorno in contornos_lineas:
+        x, y, w, h = cv2.boundingRect(contorno)
+        # Si el contorno corresponde a una línea horizontal
+        if altura_minima_linea <= h <= altura_maxima_linea:
+            # Ajustar el recorte añadiendo un margen por debajo, por encima y a la derecha de la línea
+            y_nuevo = min(y + margen_bajo, pregunta.shape[0])  # Evitar que se pase del borde inferior
+            y_inicial = max(0, y - margen_arriba)  # Evitar que se pase del borde superior
+            x_final = max(0, x + w - margen_derecho)  # Ajustar el ancho para recortar desde el lado derecho
+            recorte_arriba = pregunta[y_inicial:y_nuevo, x:x_final]  # Recorte desde el inicio de la línea hasta el nuevo ancho
+            return recorte_arriba
+
+    # Si no se encuentra una línea, retornar la pregunta completa
+    return pregunta
 
 # Función para recortar el encabezado
 def recortar_encabezado(img_umbralizada, contornos_ordenados):
@@ -183,8 +95,8 @@ def recortar_encabezado(img_umbralizada, contornos_ordenados):
 
 # Función para quedarnos con la info del encabezado
 def recortar_lineas_encabezado(encabezado):
-    _, encabezado_bin = umbralizar_imagen(encabezado)
-    contornos_lineas = obtener_y_dibujar_contornos(encabezado_bin)
+    encabezado_bin = umbralizar_imagen(encabezado)
+    contornos_lineas = obtener_contornos(encabezado_bin)
 
     # Definir límites de longitud
     longitud_minima = 60  # Longitud mínima para considerar una línea
@@ -250,6 +162,15 @@ def validar_fecha(indices_letras):
         return "OK"
     return "MAL"
 
+# Función para validar las preguntas
+def validar_pregunta(indices_letras):
+    if len(indices_letras) == 0:
+        return "Incorrecto - No hay índices"
+    elif len(indices_letras) > 2:
+        return "Incorrecto - Más de 2 índices"
+    else:
+        return "Correcto"
+
 # Función para combinar todas las imágenes en una sola de forma vertical
 def combinar_imagenes(imgs, nombres, aprobados, ancho=300, alto=100):
     filas = []
@@ -301,10 +222,10 @@ for i, ruta_imagen in enumerate(rutas_imagenes):
     img = cargar_y_mostrar_imagen(ruta_imagen)
 
     # 2. Umbralizar la imagen
-    im, img_umbralizada = umbralizar_imagen(img)
+    img_umbralizada = umbralizar_imagen(img)
 
     # 3. Obtener contornos
-    contornos = obtener_y_dibujar_contornos(img_umbralizada)
+    contornos = obtener_contornos(img_umbralizada)
 
     # 4. Recortar el encabezado
     encabezado_recortado = recortar_encabezado(img_umbralizada, contornos)
@@ -339,9 +260,23 @@ for i, ruta_imagen in enumerate(rutas_imagenes):
 
         print(f"{etiqueta_validacion}: {validacion}")
     
-    # 8. Corregir examen
+    # 8. Procesar preguntas
+    preguntas_recortadas = recortar_preguntas(img_umbralizada, contornos)
 
-    respuestas_correctas = correccion_examen(img_umbralizada, contornos)
+    # Validar preguntas
+    for k, pregunta_recortada in enumerate(preguntas_recortadas):
+        # Recortar la respuesta desde la línea horizontal hacia arriba
+        respuesta_recortada = recortar_respuesta_desde_linea(pregunta_recortada, margen_bajo=0, margen_arriba=13, margen_derecho=10)
+
+        # Obtener los índices de letras en la respuesta recortada
+        indices_letras_respuesta = obtener_indices(respuesta_recortada)
+    # Validar la respuesta
+        validacion_pregunta = validar_pregunta(indices_letras_respuesta)
+        print(f"Pregunta {k + 1}: {validacion_pregunta}")
+        # Validar la respuesta
+        validacion_pregunta = validar_pregunta(indices_letras_respuesta)
+        if validacion_pregunta == "Correcto":
+            respuestas_correctas += 1
 
     # 9. Evaluar si el alumno aprobó o no
     aprobado = respuestas_correctas >= 6
@@ -357,4 +292,4 @@ plt.axis('off')
 plt.show()
 
 # Guardar la imagen en un archivo:
-cv2.imwrite('resultado_examenes.png', imagen_salida)
+#cv2.imwrite('resultado_examenes.png', imagen_salida)
